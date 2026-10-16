@@ -1,6 +1,56 @@
 <?php
 session_start();
 header('Content-Type: text/html; charset=UTF-8');
+header('Cache-Control: no-store');
+
+function borrarPartida(): void
+{
+    unset(
+        $_SESSION['punt_partida'],
+        $_SESSION['partida_acabada'],
+        $_SESSION['partida_token'],
+        $_SESSION['partida_user'],
+        $_SESSION['ultima_tirada']
+    );
+}
+
+function abandonarPartida(): void
+{
+    if (empty($_SESSION['partida_acabada'])) {
+        borrarPartida();
+    }
+}
+
+function entrarPartida(string $user, bool $continuar): void
+{
+    if (($_SESSION['partida_user'] ?? null) !== $user
+        || (!$continuar && empty($_SESSION['partida_acabada']))) {
+        borrarPartida();
+    }
+    $_SESSION['partida_user'] = $user;
+}
+
+function tokenPartidaValido($token): bool
+{
+    return is_string($token)
+        && isset($_SESSION['partida_token'])
+        && hash_equals($_SESSION['partida_token'], $token);
+}
+
+// El cierre no necesita volver a enviar la contraseña del jugador.
+if (isset($_POST['abandonar'])) {
+    if (tokenPartidaValido($_POST['partida_token'] ?? null)) {
+        abandonarPartida();
+    }
+    http_response_code(204);
+    exit;
+}
+
+$continuar = isset($_POST['tirada']) || isset($_POST['nova_partida']);
+if ($continuar && !tokenPartidaValido($_POST['partida_token'] ?? null)) {
+    header('Location: index.html', true, 303);
+    exit;
+}
 
 $user = $_POST['usuari'] ?? null;
 $password = $_POST['contrassenya'] ?? null;
@@ -20,13 +70,35 @@ try {
 } catch (PDOException | RuntimeException $error) {
     error_log($error->getMessage());
     http_response_code(500);
-    exit('No se pudo acceder a la base de datos. Revisa la configuración y el registro de PHP.');
+    exit("No s'ha pogut accedir a la DB. Revisa el registre PHP.");
 }
 
 if ($usuarios != 1) {
-    echo "El teu usuari o contrassenya no �s correcte.";
+    echo "El teu usuari o contrassenya no és correcte.";
     exit;
 }
+
+// Preparar el contador del usuario si todavía no tiene una fila.
+try {
+    $resultado = $conexion->prepare('SELECT 1 FROM record WHERE `user` = :user LIMIT 1');
+    $resultado->execute(['user' => $user]);
+    if ($resultado->fetchColumn() === false) {
+        $resultado = $conexion->prepare(
+            'INSERT INTO record (`user`, victorias, derrotas) VALUES (:user, 0, 0)'
+        );
+        $resultado->execute(['user' => $user]);
+    }
+} catch (PDOException $error) {
+    error_log($error->getMessage());
+    http_response_code(500);
+    exit('No es pot preparar el registre del jugador.');
+}
+
+// Al entrar solo se descarta la partida pendiente, no un resultado final.
+entrarPartida($user, $continuar);
+// Renovarlo evita que el cierre tardío de una página antigua borre la nueva.
+$_SESSION['partida_token'] = bin2hex(random_bytes(32));
+$partida_token = $_SESSION['partida_token'];
 
 echo "Benvingut, ";
 echo htmlspecialchars($user, ENT_QUOTES, 'UTF-8');
@@ -42,6 +114,12 @@ global $score;
 
 $dau1 = rand(1,6);
 $dau2 = rand(1,6);
+$_SESSION['ultima_tirada'] = [$dau1, $dau2];
+$score = $dau1 + $dau2;
+mostrarDados($dau1, $dau2);
+}
+
+function mostrarDados(int $dau1, int $dau2): void {
 
 echo "<br>";
 if ($dau1 == 1)
@@ -103,10 +181,12 @@ echo "Has tret un <span style='font-weight: bold;'> ".$dau1." </span> i un <span
 if (isset($_POST['nova_partida'])) {
     unset($_SESSION['punt_partida']);
     unset($_SESSION['partida_acabada']);
+    unset($_SESSION['ultima_tirada']);
 }
 
 // Solo tirar si la partida sigue activa.
 if (empty($_SESSION['partida_acabada'])) {
+    $estado_anterior = $_SESSION;
     tirada();
 
     if (!isset($_SESSION['punt_partida'])) {
@@ -130,19 +210,42 @@ if (empty($_SESSION['partida_acabada'])) {
 
     // Guardar cada tirada realizada.
     try {
+        $conexion->beginTransaction();
         $resultado = $conexion->prepare(
             'INSERT INTO resultats (dau1, dau2, `user`) VALUES (:dau1, :dau2, :user)'
         );
         $resultado->execute(['dau1' => $dau1, 'dau2' => $dau2, 'user' => $user]);
+        // Contar únicamente la tirada que termina la partida, no al mostrarla.
+        if (!empty($_SESSION['partida_acabada'])) {
+            $victoria = $_SESSION['partida_acabada'] === 'guanyat' ? 1 : 0;
+            $resultado = $conexion->prepare(
+                'UPDATE record SET victorias = victorias + :victoria,
+                 derrotas = derrotas + :derrota WHERE `user` = :user'
+            );
+            $resultado->execute([
+                'victoria' => $victoria,
+                'derrota' => 1 - $victoria,
+                'user' => $user,
+            ]);
+        }
+        $conexion->commit();
     } catch (PDOException $error) {
+        if ($conexion->inTransaction()) {
+            $conexion->rollBack();
+        }
+        $_SESSION = $estado_anterior;
         error_log($error->getMessage());
         http_response_code(500);
-        exit('No se pudo guardar la tirada. Revisa el registro de PHP.');
+        exit('No es pot guardar la tirada. Revisa el registre PHP.');
     }
 }
 
-// Mostrar el estado y elegir el bot�n.
+// Mostrar el estado y elegir el botón.
 if (!empty($_SESSION['partida_acabada'])) {
+    // Una visita posterior muestra la última tirada sin lanzar ni insertar otra.
+    if ($dau1 === 0 && isset($_SESSION['ultima_tirada'])) {
+        mostrarDados(...$_SESSION['ultima_tirada']);
+    }
     if ($_SESSION['partida_acabada'] == 'guanyat') {
         echo "<br>Has guanyat!";
     } else {
@@ -152,7 +255,7 @@ if (!empty($_SESSION['partida_acabada'])) {
     $boto = 'nova_partida';
     $text_boto = 'Torna a jugar';
 } else {
-    echo "<br>El teu punt de partida �s "
+    echo "<br>El teu punt de partida és "
          . $_SESSION['punt_partida'];
 
     $boto = 'tirada';
@@ -168,11 +271,14 @@ $password_html = htmlspecialchars(
     'UTF-8'
 );
 
+$partida_activa = empty($_SESSION['partida_acabada']) ? '1' : '0';
+
 echo <<<EOD
-<form method="POST" action="">
+<form id="joc" data-activa="$partida_activa" method="POST" action="juga.php">
+    <input type="hidden" name="partida_token" value="$partida_token">
     <input type="hidden" name="usuari" value="$user_html">
     <input type="hidden" name="contrassenya" value="$password_html">
     <button type="submit" name="$boto" value="1">$text_boto</button>
 </form>
+<script src="partida.js"></script>
 EOD;
-?>
