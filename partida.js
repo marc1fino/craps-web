@@ -1,33 +1,33 @@
-const joc = document.getElementById('joc');
-const partidaActiva = joc.dataset.activa === '1';
-let enviantFormulari = false;
+const game = document.getElementById('game');
+const gameActive = game.dataset.active === '1';
+let submittingForm = false;
 
-joc.addEventListener('submit', () => {
-    // Los botones del juego deben conservar la partida entre peticiones.
-    enviantFormulari = true;
+game.addEventListener('submit', () => {
+    // Keep the game state between requests.
+    submittingForm = true;
 });
 
 window.addEventListener('beforeunload', (event) => {
-    if (partidaActiva && !enviantFormulari) {
-        // El navegador elige el texto del aviso. Cancelarlo no borra nada.
+    if (gameActive && !submittingForm) {
+        // The browser chooses the warning message.
         event.preventDefault();
         event.returnValue = '';
     }
 });
 
 window.addEventListener('pagehide', () => {
-    if (partidaActiva && !enviantFormulari) {
-        const datos = new FormData();
-        datos.set('abandonar', '1');
-        datos.set('partida_token', joc.elements.partida_token.value);
-        navigator.sendBeacon('juga.php', datos);
+    if (gameActive && !submittingForm) {
+        const data = new FormData();
+        data.set('abandon', '1');
+        data.set('game_token', game.elements.game_token.value);
+        navigator.sendBeacon('juga.php', data);
     }
 });
 
 window.addEventListener('pageshow', (event) => {
     if (event.persisted) {
-        // Volver con Atrás no debe recuperar un formulario ya abandonado.
-        enviantFormulari = true;
+        // Going back must not restore a previously submitted form.
+        submittingForm = true;
         window.location.replace('index.html');
     }
 });

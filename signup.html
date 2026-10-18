@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
+    <title>Craps</title>
+</head>
+
+<body>
+    <p id="error-message" role="alert" hidden></p>
+    <script src="mensajes.js" defer></script>
+    <br /><br />
+    <form method="post" action="signup.php" name="dice">
+        Sign up to play craps.<br />
+        <label for="username">Enter your username:</label><br />
+        <span lang="en"><input name="username" id="username" maxlength="30" required /><br /> <br />
+            <label for="password"> Enter your password:</label><br />
+            <input name="password" type="password" id="password" autocomplete="new-password" required />
+            <button type="button" id="show_password" aria-pressed="false">Show</button><br /><br />
+            <label for="password_repeat"> Repeat your password:</label><br />
+            <input name="password_repeat" type="password" id="password_repeat" required oncopy="return false" onpaste="return false" /><br /><br />
+            <br />
+            <input name="signup" value="Sign up" type="submit" /><br /></span><span lang="en"></span>
+    </form>
+</body>
+
+<script>
+    const password = document.getElementById('password');
+    const passwordRepeat = document.getElementById('password_repeat');
+    const button = document.getElementById('show_password');
+
+    button.addEventListener('click', function () {
+        const showPassword = password.type === 'password';
+
+        if (showPassword) {
+            password.type = 'text';
+            button.textContent = 'Hide';
+        } else {
+            password.type = 'password';
+            button.textContent = 'Show';
+        }
+
+        button.setAttribute('aria-pressed', String(showPassword));
+    });
+</script>
+
+</html>

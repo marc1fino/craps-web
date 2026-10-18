@@ -3,57 +3,57 @@ session_start();
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store');
 
-function borrarPartida(): void
+function clearGame(): void
 {
     unset(
-        $_SESSION['punt_partida'],
-        $_SESSION['partida_acabada'],
-        $_SESSION['partida_token'],
-        $_SESSION['partida_user'],
-        $_SESSION['ultima_tirada']
+        $_SESSION['game_point'],
+        $_SESSION['game_result'],
+        $_SESSION['game_token'],
+        $_SESSION['game_user'],
+        $_SESSION['last_roll']
     );
 }
 
-function abandonarPartida(): void
+function abandonGame(): void
 {
-    if (empty($_SESSION['partida_acabada'])) {
-        borrarPartida();
+    if (empty($_SESSION['game_result'])) {
+        clearGame();
     }
 }
 
-function entrarPartida(string $user, bool $continuar): void
+function enterGame(string $user, bool $continueGame): void
 {
-    if (($_SESSION['partida_user'] ?? null) !== $user
-        || (!$continuar && empty($_SESSION['partida_acabada']))) {
-        borrarPartida();
+    if (($_SESSION['game_user'] ?? null) !== $user
+        || (!$continueGame && empty($_SESSION['game_result']))) {
+        clearGame();
     }
-    $_SESSION['partida_user'] = $user;
+    $_SESSION['game_user'] = $user;
 }
 
-function tokenPartidaValido($token): bool
+function isGameTokenValid($token): bool
 {
     return is_string($token)
-        && isset($_SESSION['partida_token'])
-        && hash_equals($_SESSION['partida_token'], $token);
+        && isset($_SESSION['game_token'])
+        && hash_equals($_SESSION['game_token'], $token);
 }
 
-// El cierre no necesita volver a enviar la contraseña del jugador.
-if (isset($_POST['abandonar'])) {
-    if (tokenPartidaValido($_POST['partida_token'] ?? null)) {
-        abandonarPartida();
+// Leaving the page does not require resending the player password.
+if (isset($_POST['abandon'])) {
+    if (isGameTokenValid($_POST['game_token'] ?? null)) {
+        abandonGame();
     }
     http_response_code(204);
     exit;
 }
 
-$continuar = isset($_POST['tirada']) || isset($_POST['nova_partida']);
-if ($continuar && !tokenPartidaValido($_POST['partida_token'] ?? null)) {
+$continueGame = isset($_POST['roll']) || isset($_POST['new_game']);
+if ($continueGame && !isGameTokenValid($_POST['game_token'] ?? null)) {
     header('Location: index.html', true, 303);
     exit;
 }
 
-$user = $_POST['usuari'] ?? null;
-$password = $_POST['contrassenya'] ?? null;
+$user = $_POST['username'] ?? null;
+$password = $_POST['password'] ?? null;
 
 if (!is_string($user) || !is_string($password)) {
     header('Location: index.html');
@@ -61,224 +61,224 @@ if (!is_string($user) || !is_string($password)) {
 }
 
 try {
-    $conexion = require __DIR__ . '/config.php';
-    $resultado = $conexion->prepare(
+    $connection = require __DIR__ . '/config.php';
+    $statement = $connection->prepare(
         'SELECT `user` FROM users WHERE `user` = :user AND `password` = :password LIMIT 2'
     );
-    $resultado->execute(['user' => $user, 'password' => $password]);
-    $usuarios = count($resultado->fetchAll());
+    $statement->execute(['user' => $user, 'password' => $password]);
+    $userCount = count($statement->fetchAll());
 } catch (PDOException | RuntimeException $error) {
     error_log($error->getMessage());
     http_response_code(500);
-    exit("No s'ha pogut accedir a la DB. Revisa el registre PHP.");
+    exit("Could not access the database. Check the PHP log.");
 }
 
-if ($usuarios != 1) {
-    echo "El teu usuari o contrassenya no és correcte.";
+if ($userCount != 1) {
+    echo "Incorrect username or password.";
     exit;
 }
 
-// Preparar el contador del usuario si todavía no tiene una fila.
+// Initialize the player counters if their row does not exist yet.
 try {
-    $resultado = $conexion->prepare('SELECT 1 FROM record WHERE `user` = :user LIMIT 1');
-    $resultado->execute(['user' => $user]);
-    if ($resultado->fetchColumn() === false) {
-        $resultado = $conexion->prepare(
-            'INSERT INTO record (`user`, victorias, derrotas) VALUES (:user, 0, 0)'
+    $statement = $connection->prepare('SELECT 1 FROM record WHERE `user` = :user LIMIT 1');
+    $statement->execute(['user' => $user]);
+    if ($statement->fetchColumn() === false) {
+        $statement = $connection->prepare(
+            'INSERT INTO record (`user`, wins, losses) VALUES (:user, 0, 0)'
         );
-        $resultado->execute(['user' => $user]);
+        $statement->execute(['user' => $user]);
     }
 } catch (PDOException $error) {
     error_log($error->getMessage());
     http_response_code(500);
-    exit('No es pot preparar el registre del jugador.');
+    exit('Could not initialize the player record.');
 }
 
-// Al entrar solo se descarta la partida pendiente, no un resultado final.
-entrarPartida($user, $continuar);
-// Renovarlo evita que el cierre tardío de una página antigua borre la nueva.
-$_SESSION['partida_token'] = bin2hex(random_bytes(32));
-$partida_token = $_SESSION['partida_token'];
+// On login, discard unfinished games and keep completed results.
+enterGame($user, $continueGame);
+// Rotate the token so a delayed close request cannot delete a newer game.
+$_SESSION['game_token'] = bin2hex(random_bytes(32));
+$game_token = $_SESSION['game_token'];
 
-echo "Benvingut, ";
+echo "Welcome, ";
 echo htmlspecialchars($user, ENT_QUOTES, 'UTF-8');
 
-$dau1 = 0;
-$dau2 = 0;
+$die1 = 0;
+$die2 = 0;
 $score = 0;
 
-function tirada() {
-global $dau1;
-global $dau2;
+function roll() {
+global $die1;
+global $die2;
 global $score;
 
-$dau1 = rand(1,6);
-$dau2 = rand(1,6);
-$_SESSION['ultima_tirada'] = [$dau1, $dau2];
-$score = $dau1 + $dau2;
-mostrarDados($dau1, $dau2);
+$die1 = rand(1,6);
+$die2 = rand(1,6);
+$_SESSION['last_roll'] = [$die1, $die2];
+$score = $die1 + $die2;
+showDice($die1, $die2);
 }
 
-function mostrarDados(int $dau1, int $dau2): void {
+function showDice(int $die1, int $die2): void {
 
 echo "<br>";
-if ($dau1 == 1)
+if ($die1 == 1)
 {
 echo "<img src=img/dice1.png>";
 }
-if ($dau1 == 2)
+if ($die1 == 2)
 {
 echo "<img src=img/dice2.png>";
 }
-if ($dau1 == 3)
+if ($die1 == 3)
 {
 echo "<img src=img/dice3.png>";
 }
-if ($dau1 == 4)
+if ($die1 == 4)
 {
 echo "<img src=img/dice4.png>";
 }
-if ($dau1 == 5)
+if ($die1 == 5)
 {
 echo "<img src=img/dice5.png>";
 }
-if ($dau1 == 6)
+if ($die1 == 6)
 {
 echo "<img src=img/dice6.png>";
 }
 
-if ($dau2 == 1)
+if ($die2 == 1)
 {
 echo "<img src=img/dice1.png>";
 }
-if ($dau2 == 2)
+if ($die2 == 2)
 {
 echo "<img src=img/dice2.png>";
 }
-if ($dau2 == 3)
+if ($die2 == 3)
 {
 echo "<img src=img/dice3.png>";
 }
-if ($dau2 == 4)
+if ($die2 == 4)
 {
 echo "<img src=img/dice4.png>";
 }
-if ($dau2 == 5)
+if ($die2 == 5)
 {
 echo "<img src=img/dice5.png>";
 }
-if ($dau2 == 6)
+if ($die2 == 6)
 {
 echo "<img src=img/dice6.png>";
 }
 
-$score = $dau1 + $dau2;
+$score = $die1 + $die2;
 echo "<br>";
-echo "Has tret un <span style='font-weight: bold;'> ".$dau1." </span> i un <span style='font-weight: bold;'> ".$dau2."</span>. Sumes <span style='font-weight: bold';> ".$score."</span><br>";
+echo "You rolled <span style='font-weight: bold;'> ".$die1." </span> and <span style='font-weight: bold;'> ".$die2."</span>. Total: <span style='font-weight: bold';> ".$score."</span><br>";
 }
 
-// Empezar una partida nueva.
-if (isset($_POST['nova_partida'])) {
-    unset($_SESSION['punt_partida']);
-    unset($_SESSION['partida_acabada']);
-    unset($_SESSION['ultima_tirada']);
+// Start a new game.
+if (isset($_POST['new_game'])) {
+    unset($_SESSION['game_point']);
+    unset($_SESSION['game_result']);
+    unset($_SESSION['last_roll']);
 }
 
-// Solo tirar si la partida sigue activa.
-if (empty($_SESSION['partida_acabada'])) {
-    $estado_anterior = $_SESSION;
-    tirada();
+// Roll only while the game is active.
+if (empty($_SESSION['game_result'])) {
+    $previousState = $_SESSION;
+    roll();
 
-    if (!isset($_SESSION['punt_partida'])) {
-        // Primera tirada.
+    if (!isset($_SESSION['game_point'])) {
+        // First roll.
         if ($score == 7 OR $score == 11) {
-            $_SESSION['partida_acabada'] = 'guanyat';
+            $_SESSION['game_result'] = 'won';
         } else if ($score == 2 OR $score == 3 OR $score == 12) {
-            $_SESSION['partida_acabada'] = 'perdut';
+            $_SESSION['game_result'] = 'lost';
         } else {
-            // Conservar el punto para las siguientes peticiones.
-            $_SESSION['punt_partida'] = $score;
+            // Keep the point for subsequent requests.
+            $_SESSION['game_point'] = $score;
         }
     } else {
-        // Tiradas siguientes: el punto permanece fijo.
-        if ($score == $_SESSION['punt_partida']) {
-            $_SESSION['partida_acabada'] = 'guanyat';
+        // Subsequent rolls: the point stays the same.
+        if ($score == $_SESSION['game_point']) {
+            $_SESSION['game_result'] = 'won';
         } else if ($score == 7) {
-            $_SESSION['partida_acabada'] = 'perdut';
+            $_SESSION['game_result'] = 'lost';
         }
     }
 
-    // Guardar cada tirada realizada.
+    // Save each roll.
     try {
-        $conexion->beginTransaction();
-        $resultado = $conexion->prepare(
-            'INSERT INTO resultats (dau1, dau2, `user`) VALUES (:dau1, :dau2, :user)'
+        $connection->beginTransaction();
+        $statement = $connection->prepare(
+            'INSERT INTO results (die1, die2, `user`) VALUES (:die1, :die2, :user)'
         );
-        $resultado->execute(['dau1' => $dau1, 'dau2' => $dau2, 'user' => $user]);
-        // Contar únicamente la tirada que termina la partida, no al mostrarla.
-        if (!empty($_SESSION['partida_acabada'])) {
-            $victoria = $_SESSION['partida_acabada'] === 'guanyat' ? 1 : 0;
-            $resultado = $conexion->prepare(
-                'UPDATE record SET victorias = victorias + :victoria,
-                 derrotas = derrotas + :derrota WHERE `user` = :user'
+        $statement->execute(['die1' => $die1, 'die2' => $die2, 'user' => $user]);
+        // Count the result only on the final roll, not when displaying it.
+        if (!empty($_SESSION['game_result'])) {
+            $win = $_SESSION['game_result'] === 'won' ? 1 : 0;
+            $statement = $connection->prepare(
+                'UPDATE record SET wins = wins + :win,
+                 losses = losses + :loss WHERE `user` = :user'
             );
-            $resultado->execute([
-                'victoria' => $victoria,
-                'derrota' => 1 - $victoria,
+            $statement->execute([
+                'win' => $win,
+                'loss' => 1 - $win,
                 'user' => $user,
             ]);
         }
-        $conexion->commit();
+        $connection->commit();
     } catch (PDOException $error) {
-        if ($conexion->inTransaction()) {
-            $conexion->rollBack();
+        if ($connection->inTransaction()) {
+            $connection->rollBack();
         }
-        $_SESSION = $estado_anterior;
+        $_SESSION = $previousState;
         error_log($error->getMessage());
         http_response_code(500);
-        exit('No es pot guardar la tirada. Revisa el registre PHP.');
+        exit('Could not save the roll. Check the PHP log.');
     }
 }
 
-// Mostrar el estado y elegir el botón.
-if (!empty($_SESSION['partida_acabada'])) {
-    // Una visita posterior muestra la última tirada sin lanzar ni insertar otra.
-    if ($dau1 === 0 && isset($_SESSION['ultima_tirada'])) {
-        mostrarDados(...$_SESSION['ultima_tirada']);
+// Display the game status and choose the button.
+if (!empty($_SESSION['game_result'])) {
+    // On a later visit, show the last roll without rolling or inserting again.
+    if ($die1 === 0 && isset($_SESSION['last_roll'])) {
+        showDice(...$_SESSION['last_roll']);
     }
-    if ($_SESSION['partida_acabada'] == 'guanyat') {
-        echo "<br>Has guanyat!";
+    if ($_SESSION['game_result'] == 'won') {
+        echo "<br>You won!";
     } else {
-        echo "<br>Has perdut!";
+        echo "<br>You lost!";
     }
 
-    $boto = 'nova_partida';
-    $text_boto = 'Torna a jugar';
+    $buttonName = 'new_game';
+    $buttonText = 'Play again';
 } else {
-    echo "<br>El teu punt de partida és "
-         . $_SESSION['punt_partida'];
+    echo "<br>Your point is "
+         . $_SESSION['game_point'];
 
-    $boto = 'tirada';
-    $text_boto = 'Torna a tirar';
+    $buttonName = 'roll';
+    $buttonText = 'Roll again';
 }
 
-// Escapar los valores para incluirlos en HTML.
-// Se usan los valores originales, no los escapados para SQL.
-$user_html = htmlspecialchars($_POST['usuari'], ENT_QUOTES, 'UTF-8');
+// Escape values before including them in HTML.
+// Use the original values, not SQL-escaped values.
+$user_html = htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8');
 $password_html = htmlspecialchars(
-    $_POST['contrassenya'],
+    $_POST['password'],
     ENT_QUOTES,
     'UTF-8'
 );
 
-$partida_activa = empty($_SESSION['partida_acabada']) ? '1' : '0';
+$game_active = empty($_SESSION['game_result']) ? '1' : '0';
 
 echo <<<EOD
-<form id="joc" data-activa="$partida_activa" method="POST" action="juga.php">
-    <input type="hidden" name="partida_token" value="$partida_token">
-    <input type="hidden" name="usuari" value="$user_html">
-    <input type="hidden" name="contrassenya" value="$password_html">
-    <button type="submit" name="$boto" value="1">$text_boto</button>
+<form id="game" data-active="$game_active" method="POST" action="juga.php">
+    <input type="hidden" name="game_token" value="$game_token">
+    <input type="hidden" name="username" value="$user_html">
+    <input type="hidden" name="password" value="$password_html">
+    <button type="submit" name="$buttonName" value="1">$buttonText</button>
 </form>
 <script src="partida.js"></script>
 EOD;
