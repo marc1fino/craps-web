@@ -52,30 +52,19 @@ if ($continueGame && !isGameTokenValid($_POST['game_token'] ?? null)) {
     exit;
 }
 
-$user = $_POST['username'] ?? null;
-$password = $_POST['password'] ?? null;
+$user = $_SESSION['username'] ?? null;
 
-if (!is_string($user) || !is_string($password)) {
-    header('Location: index.html');
+if (!is_string($user) || $user === '') {
+    header('Location: login.html', true, 303);
     exit;
 }
 
 try {
     $connection = require __DIR__ . '/config.php';
-    $statement = $connection->prepare(
-        'SELECT `user` FROM users WHERE `user` = :user AND `password` = :password LIMIT 2'
-    );
-    $statement->execute(['user' => $user, 'password' => $password]);
-    $userCount = count($statement->fetchAll());
 } catch (PDOException | RuntimeException $error) {
     error_log($error->getMessage());
     http_response_code(500);
     exit("Could not access the database. Check the PHP log.");
-}
-
-if ($userCount != 1) {
-    echo "Incorrect username or password.";
-    exit;
 }
 
 // Initialize the player counters if their row does not exist yet.
@@ -262,22 +251,11 @@ if (!empty($_SESSION['game_result'])) {
     $buttonText = 'Roll again';
 }
 
-// Escape values before including them in HTML.
-// Use the original values, not SQL-escaped values.
-$user_html = htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8');
-$password_html = htmlspecialchars(
-    $_POST['password'],
-    ENT_QUOTES,
-    'UTF-8'
-);
-
 $game_active = empty($_SESSION['game_result']) ? '1' : '0';
 
 echo <<<EOD
 <form id="game" data-active="$game_active" method="POST" action="juga.php">
     <input type="hidden" name="game_token" value="$game_token">
-    <input type="hidden" name="username" value="$user_html">
-    <input type="hidden" name="password" value="$password_html">
     <button type="submit" name="$buttonName" value="1">$buttonText</button>
 </form>
 <script src="partida.js"></script>

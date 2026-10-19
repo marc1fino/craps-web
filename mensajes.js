@@ -1,5 +1,7 @@
 // PHP sends a code in the URL; select the corresponding message here.
 const errorMessages = new Map([
+    ['invalid_credentials', 'Incorrect username or password.'],
+    ['login_unavailable', 'Login is currently unavailable. Please try again later.'],
     ['invalid_data', 'The submitted data is invalid. Please fill out the form again.'],
     ['empty_fields', 'Enter your username and both passwords.'],
     ['username_too_long', 'Your username must be no longer than 30 characters.'],
