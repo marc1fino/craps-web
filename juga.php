@@ -1,5 +1,6 @@
 <?php
-session_start();
+// TODO: Money, leaderboard
+require_once __DIR__ . '/session.php';
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store');
 
@@ -48,7 +49,7 @@ if (isset($_POST['abandon'])) {
 
 $continueGame = isset($_POST['roll']) || isset($_POST['new_game']);
 if ($continueGame && !isGameTokenValid($_POST['game_token'] ?? null)) {
-    header('Location: index.html', true, 303);
+    header('Location: index.php', true, 303);
     exit;
 }
 

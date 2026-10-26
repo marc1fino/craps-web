@@ -1,7 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/session.php';
+
 $user = $_POST['username'] ?? null;
 $password = $_POST['password'] ?? null;
+$rememberMe = ($_POST['remember_me'] ?? '') === '1';
 
 if (!is_string($user) || !is_string($password)) {
     header('Location: login.html?error=invalid_credentials', true, 303);
@@ -34,6 +36,14 @@ if (!$account || !password_verify($password, $account['password'])) {
 
 // Store only the authenticated username, never the password.
 session_regenerate_id(true);
+// A different account must not inherit the previous player's game.
+if (($_SESSION['username'] ?? null) !== $account['user']) {
+    $_SESSION = [];
+}
 $_SESSION['username'] = $account['user'];
+$_SESSION['remember_me'] = $rememberMe;
+$_SESSION['login_expires_at'] = time() + LOGIN_LIFETIME;
+$_SESSION['logout_token'] = bin2hex(random_bytes(32));
+sendLoginCookie();
 header('Location: juga.php', true, 303);
 exit;

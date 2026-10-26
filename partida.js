@@ -28,6 +28,6 @@ window.addEventListener('pageshow', (event) => {
     if (event.persisted) {
         // Going back must not restore a previously submitted form.
         submittingForm = true;
-        window.location.replace('index.html');
+        window.location.replace('index.php');
     }
 });

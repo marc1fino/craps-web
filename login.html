@@ -15,9 +15,14 @@
         <p class="MsoNormal">
             <span lang="en">Enter your username:</span>
         </p>
-        <span lang="en"><input name="username" /><br /><br /><input name="password"
-                type="password" /><br /><br /><input name="Login" value="Log in" type="submit" /><br /></span><span
-            lang="en"></span>
+        <input name="username" autocomplete="username" required /><br /><br />
+        <input name="password" type="password" autocomplete="current-password" required /><br /><br />
+        <label>
+            <input type="checkbox" name="remember_me" value="1">
+            Remember me
+        </label>
+        <br /><br />
+        <input name="Login" value="Log in" type="submit" />
     </form>
 </body>
 
