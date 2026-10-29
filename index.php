@@ -43,5 +43,11 @@ if (!isset($_SESSION['logout_token'])) {
         </form>
 
     <?php endif; ?>
+    
+    <br>
+    
+    <form action="leaderboard.php">
+        <input type="submit" value="Leaderboard">
+    </form>
 </body>
 </html>
