@@ -49,7 +49,7 @@ try {
     $connection->beginTransaction();
 
     $statement = $connection->prepare(
-        'INSERT INTO users (`user`, `password`) VALUES (:user, :password)'
+        'INSERT INTO users (`user`, `password`, `money`) VALUES (:user, :password, 50000)'
     );
     $statement->execute(['user' => $user, 'password' => $hash]);
 
